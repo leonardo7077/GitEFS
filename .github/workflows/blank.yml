@@ -27,7 +27,7 @@ jobs:
       - name: Adicionar host EC2 ao Known-hosts
         run: |
           ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ''
-          ssh-keyscan -H 100.27.232.67 >> ~/.ssh/known_hosts
+          ssh-keyscan -H 52.21.84.52 >> ~/.ssh/known_hosts
 
       - name: Envio das imagens SCP
         if: always()
