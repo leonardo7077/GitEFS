@@ -1,37 +1,67 @@
-name: automacao-efs
-run-name: EFS
+name: CI/CD-V2
 on:
   push:
     branches:
       - "main"
-    paths:
-      - images/*.jpg
-      - images/*.jpeg
-      - images/*.png
-      - .github/workflows/main.yml
+
 jobs:
-  efs-senai:
+  pamelaa:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Instalação do SSH
-        run: sudo apt-get install -y openssh-client
-
-      - name: Verificação da chave pem
-        run: echo "$KEY_PATH"
-        env:
-          KEY_PATH: ${{ secrets.CHAVE_PEM }}
-
-      - name: Adicionar host EC2 ao Known-hosts
+      - name: INSTALL PACKAGES
         run: |
-          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ''
-          ssh-keyscan -H 52.21.84.52 >> ~/.ssh/known_hosts
+          sudo apt update -y
+          sudo apt-get install figlet -y
+          curl https://static.snyk.io/cli/latest/snyk-linux -o snyk
+          chmod +x ./snyk
+          mv ./snyk /usr/local/bin/
 
-      - name: Envio das imagens SCP
+      - name: Snyk Auth
+        run: |
+          snyk -d auth $SNYK_TOKEN
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_AUTH_TOKEN }}
+
+      - name: Configurar AWS CLI
         if: always()
         run: |
-          echo "$KEY_PATH" > ./labuser.pem
-          chmod 600 ./labuser.pem
-          scp -i ./labuser.pem imagens/*.*
+          echo "AWS CLI" | figlet -f small
+          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+          aws configure set default.region us-east-1
+          export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+          export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+          export AWS_DEFAULT_REGION="us-east-1"
+          export AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Copy EC2 Terraform file
+        run: |
+          cp app/ec2.tf .
+
+      - name: Install Terraform
+        run: |
+          wget https://releases.hashicorp.com/terraform/1.0.0/terraform_1.0.0_linux_amd64.zip
+          unzip terraform_1.0.0_linux_amd64.zip
+          sudo mv terraform /usr/local/bin/
+      
+      - name: Deploy EC2 using Terraform
+        if: always()
+        run: |
+          echo "Deploying EC2" | figlet -f small
+          terraform init
+          terraform apply -auto-approve \
+            -var="AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            -var="AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            -var="AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}"
+          PUBLIC_IP=$(terraform output -json public_ip | jq -r '.')
+          echo "$PUBLIC_IP" | figlet -f small
+      
+      - name: Finalização
+        run: echo "Portifolio e do job ${{ job.status }}."
